@@ -1,17 +1,17 @@
 # -*- encoding : ascii-8bit -*-
 # frozen_string_literal: true
 
-require 'json'
-require 'rlp'
+require "json"
+require "rlp"
 
 require_relative "ethereum_abi/version"
 require_relative "ethereum_abi/utils"
 require_relative "ethereum_abi/constant"
-require_relative "ethereum_abi/contract_translator"
 require_relative "ethereum_abi/type"
 
 module EthereumAbi
   class Error < StandardError; end
+  class ValueError < StandardError; end
 
   extend self
 
@@ -25,13 +25,14 @@ module EthereumAbi
   # Encodes multiple arguments using the head/tail mechanism.
   #
   def encode_abi(types, args)
-    parsed_types = types.map {|t| Type.parse(t) }
+    parsed_types = types.map { |t| Type.parse(t) }
 
     head_size = (0...args.size)
-                  .map {|i| parsed_types[i].size || 32 }
-                  .reduce(0, &:+)
+                .map { |i| parsed_types[i].size || 32 }
+                .reduce(0, &:+)
 
-    head, tail = '', ''
+    head = ""
+    tail = ""
     args.each_with_index do |arg, i|
       if parsed_types[i].dynamic?
         head += encode_type(Type.size_type, head_size + tail.size)
@@ -43,7 +44,7 @@ module EthereumAbi
 
     "#{head}#{tail}"
   end
-  alias :encode :encode_abi
+  alias encode encode_abi
 
   ##
   # Encodes a single value (static or dynamic).
@@ -54,7 +55,7 @@ module EthereumAbi
   # @return [String] encoded bytes
   #
   def encode_type(type, arg)
-    if %w(string bytes).include?(type.base) && type.sub.empty?
+    if %w[string bytes].include?(type.base) && type.sub.empty?
       raise ArgumentError, "arg must be a string" unless arg.instance_of?(String)
 
       size = encode_type Type.size_type, arg.size
@@ -64,18 +65,22 @@ module EthereumAbi
     elsif type.dynamic?
       raise ArgumentError, "arg must be an array" unless arg.instance_of?(Array)
 
-      head, tail = '', ''
-      if type.dims.last == 0
+      head = ""
+      tail = ""
+      if type.dims.last.zero?
         head += encode_type(Type.size_type, arg.size)
       else
-        raise ArgumentError, "Wrong array size: found #{arg.size}, expecting #{type.dims.last}" unless arg.size == type.dims.last
+        unless arg.size == type.dims.last
+          raise ArgumentError,
+                "Wrong array size: found #{arg.size}, expecting #{type.dims.last}"
+        end
       end
 
       sub_type = type.subtype
       sub_size = type.subtype.size
       arg.size.times do |i|
         if sub_size.nil?
-          head += encode_type(Type.size_type, 32*arg.size + tail.size)
+          head += encode_type(Type.size_type, 32 * arg.size + tail.size)
           tail += encode_type(sub_type, arg[i])
         else
           head += encode_type(sub_type, arg[i])
@@ -83,45 +88,47 @@ module EthereumAbi
       end
 
       "#{head}#{tail}"
-    else # static type
-      if type.dims.empty?
-        encode_primitive_type type, arg
-      else
-        arg.map {|x| encode_type(type.subtype, x) }.join
-      end
+    elsif type.dims.empty? # static type
+      encode_primitive_type type, arg
+    else
+      arg.map { |x| encode_type(type.subtype, x) }.join
     end
   end
 
   def encode_primitive_type(type, arg)
     case type.base
-    when 'uint'
+    when "uint"
       real_size = type.sub.to_i
       i = get_uint arg
 
       raise ValueOutOfBounds, arg unless i >= 0 && i < 2**real_size
+
       Utils.zpad_int i
-    when 'bool'
+    when "bool"
       raise ArgumentError, "arg is not bool: #{arg}" unless arg.instance_of?(TrueClass) || arg.instance_of?(FalseClass)
-      Utils.zpad_int(arg ? 1: 0)
-    when 'int'
+
+      Utils.zpad_int(arg ? 1 : 0)
+    when "int"
       real_size = type.sub.to_i
       i = get_int arg
 
-      raise ValueOutOfBounds, arg unless i >= -2**(real_size-1) && i < 2**(real_size-1)
+      raise ValueOutOfBounds, arg unless i >= -2**(real_size - 1) && i < 2**(real_size - 1)
+
       Utils.zpad_int(i % 2**type.sub.to_i)
-    when 'ureal', 'ufixed'
-      high, low = type.sub.split('x').map(&:to_i)
+    when "ureal", "ufixed"
+      high, low = type.sub.split("x").map(&:to_i)
 
       raise ValueOutOfBounds, arg unless arg >= 0 && arg < 2**high
+
       Utils.zpad_int((arg * 2**low).to_i)
-    when 'real', 'fixed'
-      high, low = type.sub.split('x').map(&:to_i)
+    when "real", "fixed"
+      high, low = type.sub.split("x").map(&:to_i)
 
       raise ValueOutOfBounds, arg unless arg >= -2**(high - 1) && arg < 2**(high - 1)
 
       i = (arg * 2**low).to_i
-      Utils.zpad_int(i % 2**(high+low))
-    when 'string', 'bytes'
+      Utils.zpad_int(i % 2**(high + low))
+    when "string", "bytes"
       raise EncodingError, "Expecting string: #{arg}" unless arg.instance_of?(String)
 
       if type.sub.empty? # variable length type
@@ -134,9 +141,9 @@ module EthereumAbi
         padding = BYTE_ZERO * (32 - arg.size)
         "#{arg}#{padding}"
       end
-    when 'hash'
+    when "hash"
       size = type.sub.to_i
-      raise EncodingError, "too long: #{arg}" unless size > 0 && size <= 32
+      raise EncodingError, "too long: #{arg}" unless size.positive? && size <= 32
 
       if arg.is_a?(Integer)
         Utils.zpad_int(arg)
@@ -147,14 +154,14 @@ module EthereumAbi
       else
         raise EncodingError, "Could not parse hash: #{arg}"
       end
-    when 'address'
+    when "address"
       if arg.is_a?(Integer)
         Utils.zpad_int arg
       elsif arg.size == 20
         Utils.zpad arg, 32
       elsif arg.size == 40
         Utils.zpad_hex arg
-      elsif arg.size == 42 && arg[0,2] == '0x'
+      elsif arg.size == 42 && arg[0, 2] == "0x"
         Utils.zpad_hex arg[2..-1]
       else
         raise EncodingError, "Could not parse address: #{arg}"
@@ -168,12 +175,11 @@ module EthereumAbi
   # Decodes multiple arguments using the head/tail mechanism.
   #
   def decode_abi(types, data)
-    parsed_types = types.map {|t| Type.parse(t) }
+    parsed_types = types.map { |t| Type.parse(t) }
 
     outputs = [nil] * types.size
     start_positions = [nil] * types.size + [data.size]
 
-    # TODO: refactor, a reverse iteration will be better
     pos = 0
     parsed_types.each_with_index do |t, i|
       # If a type is static, grab the data directly, otherwise record its
@@ -211,39 +217,39 @@ module EthereumAbi
       end
     end
 
-    parsed_types.zip(outputs).map {|(type, out)| decode_type(type, out) }
+    parsed_types.zip(outputs).map { |(type, out)| decode_type(type, out) }
   end
-  alias :decode :decode_abi
+  alias decode decode_abi
 
   def decode_type(type, arg)
-    if %w(string bytes).include?(type.base) && type.sub.empty?
-      l = Utils.big_endian_to_int arg[0,32]
+    if %w[string bytes].include?(type.base) && type.sub.empty?
+      l = Utils.big_endian_to_int arg[0, 32]
       data = arg[32..-1]
 
       raise DecodingError, "Wrong data size for string/bytes object" unless data.size == Utils.ceil32(l)
 
       data[0, l]
     elsif type.dynamic?
-      l = Utils.big_endian_to_int arg[0,32]
+      l = Utils.big_endian_to_int arg[0, 32]
       subtype = type.subtype
 
       if subtype.dynamic?
-        raise DecodingError, "Not enough data for head" unless arg.size >= 32 + 32*l
+        raise DecodingError, "Not enough data for head" unless arg.size >= 32 + 32 * l
 
-        start_positions = (1..l).map {|i| Utils.big_endian_to_int arg[32*i, 32] }
+        start_positions = (1..l).map { |i| Utils.big_endian_to_int arg[32 * i, 32] }
         start_positions.push arg.size
 
-        outputs = (0...l).map {|i| arg[start_positions[i]...start_positions[i+1]] }
+        outputs = (0...l).map { |i| arg[start_positions[i]...start_positions[i + 1]] }
 
-        outputs.map {|out| decode_type(subtype, out) }
+        outputs.map { |out| decode_type(subtype, out) }
       else
-        (0...l).map {|i| decode_type(subtype, arg[32 + subtype.size*i, subtype.size]) }
+        (0...l).map { |i| decode_type(subtype, arg[32 + subtype.size * i, subtype.size]) }
       end
     elsif !type.dims.empty? # static-sized arrays
       l = type.dims.last[0]
       subtype = type.subtype
 
-      (0...l).map {|i| decode_type(subtype, arg[subtype.size*i, subtype.size]) }
+      (0...l).map { |i| decode_type(subtype, arg[subtype.size * i, subtype.size]) }
     else
       decode_primitive_type type, arg
     end
@@ -251,31 +257,31 @@ module EthereumAbi
 
   def decode_primitive_type(type, data)
     case type.base
-    when 'address'
+    when "address"
       Utils.encode_hex data[12..-1]
-    when 'string', 'bytes'
+    when "string", "bytes"
       if type.sub.empty? # dynamic
-        size = Utils.big_endian_to_int data[0,32]
-        data[32..-1][0,size]
+        size = Utils.big_endian_to_int data[0, 32]
+        data[32..-1][0, size]
       else # fixed
         data[0, type.sub.to_i]
       end
-    when 'hash'
+    when "hash"
       data[(32 - type.sub.to_i), type.sub.to_i]
-    when 'uint'
+    when "uint"
       Utils.big_endian_to_int data
-    when 'int'
+    when "int"
       u = Utils.big_endian_to_int data
-      u >= 2**(type.sub.to_i-1) ? (u - 2**type.sub.to_i) : u
-    when 'ureal', 'ufixed'
-      high, low = type.sub.split('x').map(&:to_i)
+      u >= 2**(type.sub.to_i - 1) ? (u - 2**type.sub.to_i) : u
+    when "ureal", "ufixed"
+      _high, low = type.sub.split("x").map(&:to_i)
       Utils.big_endian_to_int(data) * 1.0 / 2**low
-    when 'real', 'fixed'
-      high, low = type.sub.split('x').map(&:to_i)
+    when "real", "fixed"
+      high, low = type.sub.split("x").map(&:to_i)
       u = Utils.big_endian_to_int data
-      i = u >= 2**(high+low-1) ? (u - 2**(high+low)) : u
+      i = u >= 2**(high + low - 1) ? (u - 2**(high + low)) : u
       i * 1.0 / 2**low
-    when 'bool'
+    when "bool"
       data[-1] == BYTE_ONE
     else
       raise DecodingError, "Unknown primitive type: #{type.base}"
@@ -288,6 +294,7 @@ module EthereumAbi
     case n
     when Integer
       raise EncodingError, "Number out of range: #{n}" if n > UINT_MAX || n < UINT_MIN
+
       n
     when String
       if n.size == 40
@@ -310,6 +317,7 @@ module EthereumAbi
     case n
     when Integer
       raise EncodingError, "Number out of range: #{n}" if n > INT_MAX || n < INT_MIN
+
       n
     when String
       if n.size == 40
@@ -319,7 +327,7 @@ module EthereumAbi
       else
         raise EncodingError, "String too long: #{n}"
       end
-      i > INT_MAX ? (i-TT256) : i
+      i > INT_MAX ? (i - TT256) : i
     when true
       1
     when false, nil
@@ -328,5 +336,4 @@ module EthereumAbi
       raise EncodingError, "Cannot decode int: #{n}"
     end
   end
-
 end

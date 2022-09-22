@@ -5,7 +5,7 @@ module EthereumAbi
   class Type
     class ParseError < StandardError; end
 
-    class <<self
+    class << self
       ##
       # Crazy regexp to seperate out base type component (eg. uint), size (eg.
       # 256, 128x128, nil), array component (eg. [], [45], nil)

@@ -9,5 +9,54 @@ Style/StringLiteralsInInterpolation:
   Enabled: true
   EnforcedStyle: double_quotes
 
+Naming/MethodParameterName:
+  Enabled: false
+
 Layout/LineLength:
   Max: 120
+  Exclude:
+    - './test/**/*.rb'
+    - './test/*.rb'
+
+Naming/VariableNumber:
+  Exclude:
+    - './test/**/*.rb'
+    - './test/*.rb'
+
+Lint/UnderscorePrefixedVariableName:
+  Exclude:
+    - './test/**/*.rb'
+    - './test/*.rb'
+
+Metrics/MethodLength:
+  Enabled: false
+
+Metrics/AbcSize:
+  Enabled: false
+
+Style/StringConcatenation:
+  Exclude:
+    - './test/**/*.rb'
+    - './test/*.rb'
+
+Metrics/PerceivedComplexity:
+  Enabled: false
+
+Style/ModuleFunction:
+  Enabled: false
+
+Metrics/CyclomaticComplexity:
+  Enabled: false
+
+Style/Documentation:
+  Enabled: false
+
+Metrics/ModuleLength:
+  Enabled: false
+
+Metrics/ClassLength:
+  Enabled: false
+
+Style/SlicingWithRange:
+  Enabled: false
+
