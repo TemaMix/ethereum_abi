@@ -1,7 +1,7 @@
 # -*- encoding : ascii-8bit -*-
 # frozen_string_literal: true
 
-require "./lib/ethereum_abi/constant"
+require_relative "constant"
 
 module EthereumAbi
   module Utils

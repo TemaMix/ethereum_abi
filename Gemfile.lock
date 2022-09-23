@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    ethereum_abi (0.1.0)
+    ethereum_abi (0.1.1)
       rlp (~> 0.7.3)
 
 GEM

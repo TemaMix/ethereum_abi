@@ -1,4 +1,7 @@
-## [Unreleased]
+## [Released]
+
+## [0.1.1] - 2022-09-23
+- Fix path to EthereumAbi::Constant
 
 ## [0.1.0] - 2022-09-21
 
